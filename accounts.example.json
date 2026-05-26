@@ -1,0 +1,76 @@
+{
+  "accounts": [
+    {
+      "name": "阿里企业邮箱",
+      "provider": "aliyun",
+      "enabled": true,
+      "imap": {
+        "host": "imap.qiye.aliyun.com",
+        "port": 993,
+        "secure": true,
+        "user": "your_name@your_domain.com",
+        "pass": "your_mail授权码",
+        "mailbox": "INBOX",
+        "markSeen": true,
+        "markSeenTimeout": 10000,
+        "reconnectDelay": 5000
+      },
+      "smtp": {
+        "host": "smtp.qiye.aliyun.com",
+        "port": 465,
+        "secure": true,
+        "user": "your_name@your_domain.com",
+        "pass": "your_mail授权码",
+        "fromName": "邮件助手"
+      }
+    },
+    {
+      "name": "腾讯企业邮箱",
+      "provider": "tencent-exmail",
+      "enabled": false,
+      "imap": {
+        "host": "imap.exmail.qq.com",
+        "port": 993,
+        "secure": true,
+        "user": "your_name@your_domain.com",
+        "pass": "your_mail授权码",
+        "mailbox": "INBOX",
+        "markSeen": true,
+        "markSeenTimeout": 10000,
+        "reconnectDelay": 5000
+      },
+      "smtp": {
+        "host": "smtp.exmail.qq.com",
+        "port": 465,
+        "secure": true,
+        "user": "your_name@your_domain.com",
+        "pass": "your_mail授权码",
+        "fromName": "邮件助手"
+      }
+    },
+    {
+      "name": "163邮箱",
+      "provider": "163",
+      "enabled": false,
+      "imap": {
+        "host": "imap.163.com",
+        "port": 993,
+        "secure": true,
+        "user": "your_name@163.com",
+        "pass": "your_mail授权码",
+        "mailbox": "INBOX",
+        "markSeen": true,
+        "markSeenTimeout": 10000,
+        "reconnectDelay": 5000
+      },
+      "smtp": {
+        "host": "smtp.163.com",
+        "port": 465,
+        "secure": true,
+        "user": "your_name@163.com",
+        "pass": "your_mail授权码",
+        "fromName": "邮件助手"
+      }
+    }
+  ]
+}
