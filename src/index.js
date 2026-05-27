@@ -5,13 +5,16 @@ const { createDatabase } = require('./database');
 const { createMailWatcher } = require('./mailWatcher');
 const { analyzeMail, loadAiOptions } = require('./aiAnalyzer');
 const { loadSmtpOptions, sendReply } = require('./mailSender');
-const { loadNotifyOptions, sendNotification, sendSystemNotification } = require('./notifier');
+const { buildNotificationContent, buildSystemNotificationContent } = require('./notifier');
+const { loadNotificationChannels, notifyChannels } = require('./notificationChannels');
+const { evaluateRules, loadRules } = require('./ruleEngine');
 const { analyzeSourceRisk } = require('./sourceRisk');
 const { loadHealthOptions, startHealthServer } = require('./healthServer');
 
 let aiOptions;
 let smtpOptions;
-let notifyOptions;
+let notificationChannels;
+let ruleConfig;
 let database;
 let healthServer;
 const runtimeStatus = {
@@ -29,10 +32,17 @@ async function notifySystemError(title, error) {
   };
 
   try {
-    await sendSystemNotification(title, [
-      `时间：${new Date().toLocaleString('zh-CN', { hour12: false })}`,
-      `错误：${error.message}`
-    ], notifyOptions);
+    await notifyChannels(notificationChannels, {
+      type: 'system_error',
+      title,
+      content: buildSystemNotificationContent(title, [
+        `时间：${new Date().toLocaleString('zh-CN', { hour12: false })}`,
+        `错误：${error.message}`
+      ]),
+      details: {
+        message: error.message
+      }
+    });
   } catch (notifyError) {
     console.error('发送系统异常通知失败:', notifyError.message);
   }
@@ -50,6 +60,7 @@ async function handleNewMail(mail) {
   let replyResult = null;
   let notifyResult = null;
   let markSeenResult = null;
+  let decision = null;
 
   if (database.isProcessed(mail)) {
     console.log(`邮件已处理过，跳过重复处理: ${mail.accountName} UID=${mail.uid}`);
@@ -72,8 +83,17 @@ async function handleNewMail(mail) {
 
     if (analysis) {
       console.log('AI 分析结果:', JSON.stringify(analysis, null, 2));
+      decision = evaluateRules(ruleConfig, { mail, analysis });
+      console.log('规则决策:', JSON.stringify(decision, null, 2));
 
-      replyResult = await sendReply(mail, analysis, smtpOptions);
+      if (decision.autoReply) {
+        replyResult = await sendReply(mail, analysis, smtpOptions);
+      } else {
+        replyResult = {
+          skipped: true,
+          reason: `规则禁止自动回复${decision.matchedRules.length ? `: ${decision.matchedRules.join('、')}` : ''}`
+        };
+      }
 
       if (replyResult.skipped) {
         console.log('自动回复跳过:', replyResult.reason);
@@ -90,32 +110,60 @@ async function handleNewMail(mail) {
     await notifySystemError('邮件处理异常', error);
   } finally {
     try {
-      notifyResult = await sendNotification(mail, analysis, replyResult, notifyOptions);
+      if (!decision) {
+        decision = evaluateRules(ruleConfig, { mail, analysis });
+      }
+
+      if (decision.notify) {
+        notifyResult = await notifyChannels(notificationChannels, {
+          type: 'mail_processed',
+          content: buildNotificationContent(mail, analysis, replyResult),
+          mail: {
+            accountName: mail.accountName,
+            uid: mail.uid,
+            from: mail.from,
+            subject: mail.subject,
+            date: mail.date
+          },
+          analysis,
+          replyResult,
+          decision
+        }, decision.notifyChannels);
+      } else {
+        notifyResult = {
+          skipped: true,
+          reason: '规则禁止通知'
+        };
+      }
 
       if (notifyResult.skipped) {
         console.log('通知跳过:', notifyResult.reason);
       } else {
         console.log('处理摘要通知已发送');
-        markSeenResult = { success: true, pending: true };
-        mail.markSeen().then(result => {
-          database.saveMailRecord(mail, {
-            status: 'processed',
-            aiStatus: analysis ? 'success' : 'failed',
-            replyStatus: replyResult?.skipped ? 'skipped' : replyResult ? 'sent' : 'none',
-            notifyStatus: 'success',
-            markSeenStatus: result.success ? 'success' : 'failed',
-            error: result.error || null
+        if (decision.markSeen) {
+          markSeenResult = { success: true, pending: true };
+          mail.markSeen().then(result => {
+            database.saveMailRecord(mail, {
+              status: 'processed',
+              aiStatus: analysis ? 'success' : 'failed',
+              replyStatus: replyResult?.skipped ? 'skipped' : replyResult ? 'sent' : 'none',
+              notifyStatus: 'success',
+              markSeenStatus: result.success ? 'success' : 'failed',
+              error: result.error || null
+            });
+          }).catch(error => {
+            database.saveMailRecord(mail, {
+              status: 'processed',
+              aiStatus: analysis ? 'success' : 'failed',
+              replyStatus: replyResult?.skipped ? 'skipped' : replyResult ? 'sent' : 'none',
+              notifyStatus: 'success',
+              markSeenStatus: 'failed',
+              error: error.message
+            });
           });
-        }).catch(error => {
-          database.saveMailRecord(mail, {
-            status: 'processed',
-            aiStatus: analysis ? 'success' : 'failed',
-            replyStatus: replyResult?.skipped ? 'skipped' : replyResult ? 'sent' : 'none',
-            notifyStatus: 'success',
-            markSeenStatus: 'failed',
-            error: error.message
-          });
-        });
+        } else {
+          markSeenResult = { success: true, skipped: true };
+        }
       }
     } catch (error) {
       console.error('发送处理摘要通知失败:', error.message);
@@ -126,7 +174,7 @@ async function handleNewMail(mail) {
       const markSeenStatus = markSeenResult?.pending
         ? 'pending'
         : markSeenSuccess
-          ? 'success'
+          ? markSeenResult?.skipped ? 'skipped' : 'success'
           : markSeenResult
             ? 'failed'
             : 'not_started';
@@ -148,7 +196,8 @@ async function main() {
   database = createDatabase(process.env.DB_PATH || 'data/mail-service.db');
   aiOptions = loadAiOptions(process.env);
   smtpOptions = loadSmtpOptions(process.env);
-  notifyOptions = loadNotifyOptions(process.env);
+  notificationChannels = loadNotificationChannels(process.env);
+  ruleConfig = loadRules(process.env.RULES_CONFIG_PATH || 'rules.json');
   const healthOptions = loadHealthOptions(process.env);
   runtimeStatus.accounts = accounts.map(account => ({
     name: account.name,

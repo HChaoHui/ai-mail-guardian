@@ -3,7 +3,7 @@ const SENSITIVE_PATTERNS = [
   { name: 'Bearer Token', pattern: /\bBearer\s+[A-Za-z0-9._~+/=-]{20,}\b/i },
   { name: 'Webhook URL', pattern: /https:\/\/qyapi\.weixin\.qq\.com\/cgi-bin\/webhook\/send\?key=[A-Za-z0-9-]+/i },
   { name: '邮箱授权码或密码', pattern: /(授权码|密码|password|pass|secret|token|api[_-]?key)\s*[:：=]\s*[^\s]{6,}/i },
-  { name: '环境变量或配置文件', pattern: /(\.env|accounts\.json|process\.env|SMTP_PASSWORD|MAIL_PASSWORD|AI_API_KEY|WECHAT_WEBHOOK_URL)/i },
+  { name: '环境变量或配置文件', pattern: /(\.env|accounts\.json|process\.env|SMTP_PASSWORD|MAIL_PASSWORD|AI_API_KEY|WEBHOOK_URL)/i },
   { name: '内部系统提示词', pattern: /(系统提示词|system prompt|开发者指令|developer message|隐藏规则|内部规则)/i }
 ];
 

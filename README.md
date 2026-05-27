@@ -13,6 +13,8 @@
 - 高风险邮件自动拦截，避免泄露密钥、配置、系统提示词等敏感信息
 - SMTP 自动回复，支持全局演练模式
 - 企业微信机器人处理摘要通知
+- 多通知渠道，支持企业微信和通用 Webhook
+- 规则引擎，可按风险、分类、账号、发件域名决定是否通知、回复和标记已读
 - SQLite 本地持久化去重，避免服务重启后重复处理
 - 通知成功后再标记邮件已读
 - 邮件来源基础风控，包括 Reply-To、Return-Path、短链接、验证码等风险提示
@@ -47,17 +49,28 @@ cp .env.example .env
 cp accounts.example.json accounts.json
 ```
 
+复制规则和通知渠道示例：
+
+```bash
+cp rules.example.json rules.json
+cp notify.config.example.json notify.config.json
+```
+
 然后编辑：
 
 ```text
 .env
 accounts.json
+rules.json
+notify.config.json
 ```
 
 ### .env
 
 ```env
 ACCOUNTS_CONFIG_PATH=accounts.json
+RULES_CONFIG_PATH=rules.json
+NOTIFY_CONFIG_PATH=notify.config.json
 DB_PATH=data/mail-service.db
 
 AI_ANALYSIS_ENABLED=true
@@ -72,10 +85,6 @@ AI_STREAM=true
 
 AUTO_REPLY_ENABLED=true
 AUTO_REPLY_DRY_RUN=true
-
-NOTIFY_ENABLED=true
-WECHAT_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=your_key
-NOTIFY_TIMEOUT=15000
 
 HEALTH_ENABLED=true
 HEALTH_HOST=127.0.0.1
@@ -124,6 +133,69 @@ HEALTH_PORT=23901
 | 阿里企业邮箱 | `imap.qiye.aliyun.com:993` | `smtp.qiye.aliyun.com:465` |
 | 腾讯企业邮箱 | `imap.exmail.qq.com:993` | `smtp.exmail.qq.com:465` |
 | 163 邮箱 | `imap.163.com:993` | `smtp.163.com:465` |
+
+### notify.config.json
+
+通知渠道支持企业微信和通用 Webhook。如果没有提供 `notify.config.json`，服务不会发送通知。
+
+```json
+{
+  "channels": [
+    {
+      "name": "default-wecom",
+      "type": "wecom",
+      "enabled": true,
+      "webhookUrl": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=your_key",
+      "timeout": 15000
+    },
+    {
+      "name": "generic-webhook",
+      "type": "generic-webhook",
+      "enabled": false,
+      "url": "https://example.com/mail-event",
+      "method": "POST",
+      "headers": {
+        "Authorization": "Bearer your_token"
+      },
+      "timeout": 15000
+    }
+  ]
+}
+```
+
+### rules.json
+
+规则引擎用于决定是否通知、是否自动回复、是否标记已读，以及通知到哪些渠道。
+
+```json
+{
+  "rules": [
+    {
+      "name": "高风险邮件只通知",
+      "enabled": true,
+      "if": {
+        "securityRisk": "high"
+      },
+      "then": {
+        "notify": true,
+        "autoReply": false,
+        "markSeen": true,
+        "notifyChannels": ["default-wecom"]
+      }
+    }
+  ],
+  "defaultAction": {
+    "notify": true,
+    "autoReply": true,
+    "markSeen": true,
+    "notifyChannels": ["default-wecom"]
+  }
+}
+```
+
+当前支持的条件字段：`category`、`priority`、`securityRisk`、`needsHumanReview`、`needsReply`、`accountName`、`from`、`fromDomain`、`sourceRiskLevel`。
+
+条件值可以是精确值、数组、包含匹配或正则。
 
 ## 启动
 
@@ -178,7 +250,7 @@ AUTO_REPLY_DRY_RUN=false
 - `securityRisk=high` 或 `needsHumanReview=true` 时自动拦截发送
 - 发送前使用规则扫描回复内容中的敏感模式
 - 企业微信通知会展示安全风险和来源风控结果
-- `.env`、`accounts.json`、SQLite 数据库默认被 `.gitignore` 忽略
+- `.env`、`accounts.json`、`rules.json`、`notify.config.json`、SQLite 数据库默认被 `.gitignore` 忽略
 
 ## 许可证
 

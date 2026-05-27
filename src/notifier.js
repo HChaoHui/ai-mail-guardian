@@ -1,11 +1,3 @@
-function loadNotifyOptions(env) {
-  return {
-    enabled: env.NOTIFY_ENABLED !== 'false',
-    webhookUrl: env.WECHAT_WEBHOOK_URL,
-    timeout: Number(env.NOTIFY_TIMEOUT || 15000)
-  };
-}
-
 function truncate(value, maxLength) {
   const text = String(value || '无');
 
@@ -82,73 +74,14 @@ function buildNotificationContent(mail, analysis, replyResult) {
   ].join('\n');
 }
 
-async function sendMarkdown(content, options) {
-  if (!options.enabled) {
-    return {
-      skipped: true,
-      reason: '通知未启用'
-    };
-  }
-
-  if (!options.webhookUrl) {
-    return {
-      skipped: true,
-      reason: '未配置 WECHAT_WEBHOOK_URL'
-    };
-  }
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), options.timeout);
-
-  try {
-    const response = await fetch(options.webhookUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        msgtype: 'markdown',
-        markdown: {
-          content
-        }
-      }),
-      signal: controller.signal
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`企业微信通知失败: ${response.status} ${errorText}`);
-    }
-
-    const result = await response.json();
-
-    if (result.errcode !== 0) {
-      throw new Error(`企业微信通知失败: ${result.errcode} ${result.errmsg}`);
-    }
-
-    return {
-      skipped: false
-    };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function sendNotification(mail, analysis, replyResult, options) {
-  return sendMarkdown(buildNotificationContent(mail, analysis, replyResult), options);
-}
-
-async function sendSystemNotification(title, details, options) {
-  const content = [
+function buildSystemNotificationContent(title, details) {
+  return [
     `### ${title}`,
     ...details.map(item => `> ${item}`)
   ].join('\n');
-
-  return sendMarkdown(content, options);
 }
 
 module.exports = {
-  loadNotifyOptions,
-  sendNotification,
-  sendSystemNotification
+  buildNotificationContent,
+  buildSystemNotificationContent
 };

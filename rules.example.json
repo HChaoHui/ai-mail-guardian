@@ -1,0 +1,63 @@
+{
+  "rules": [
+    {
+      "name": "高风险邮件只通知",
+      "enabled": true,
+      "if": {
+        "securityRisk": "high"
+      },
+      "then": {
+        "notify": true,
+        "autoReply": false,
+        "markSeen": true,
+        "notifyChannels": ["default-wecom"]
+      }
+    },
+    {
+      "name": "需要人工复核只通知",
+      "enabled": true,
+      "if": {
+        "needsHumanReview": true
+      },
+      "then": {
+        "notify": true,
+        "autoReply": false,
+        "markSeen": true,
+        "notifyChannels": ["default-wecom"]
+      }
+    },
+    {
+      "name": "系统通知不回复",
+      "enabled": true,
+      "if": {
+        "category": "系统通知"
+      },
+      "then": {
+        "notify": true,
+        "autoReply": false,
+        "markSeen": true,
+        "notifyChannels": ["default-wecom"]
+      }
+    },
+    {
+      "name": "低风险客户咨询允许自动回复",
+      "enabled": true,
+      "if": {
+        "category": "客户咨询",
+        "securityRisk": "low"
+      },
+      "then": {
+        "notify": true,
+        "autoReply": true,
+        "markSeen": true,
+        "notifyChannels": ["default-wecom"]
+      }
+    }
+  ],
+  "defaultAction": {
+    "notify": true,
+    "autoReply": true,
+    "markSeen": true,
+    "notifyChannels": ["default-wecom"]
+  }
+}

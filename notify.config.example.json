@@ -1,0 +1,22 @@
+{
+  "channels": [
+    {
+      "name": "default-wecom",
+      "type": "wecom",
+      "enabled": true,
+      "webhookUrl": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=your_key",
+      "timeout": 15000
+    },
+    {
+      "name": "generic-webhook",
+      "type": "generic-webhook",
+      "enabled": false,
+      "url": "https://example.com/mail-event",
+      "method": "POST",
+      "headers": {
+        "Authorization": "Bearer your_token"
+      },
+      "timeout": 15000
+    }
+  ]
+}

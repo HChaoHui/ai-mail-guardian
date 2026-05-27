@@ -1,5 +1,7 @@
 .env
 accounts.json
+notify.config.json
+rules.json
 data/
 node_modules/
 .DS_Store
