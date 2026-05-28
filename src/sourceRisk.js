@@ -1,3 +1,25 @@
+const fs = require('fs');
+const path = require('path');
+
+function readJsonIfExists(filePath) {
+  const resolvedPath = path.resolve(filePath);
+
+  if (!fs.existsSync(resolvedPath)) {
+    return null;
+  }
+
+  return JSON.parse(fs.readFileSync(resolvedPath, 'utf8'));
+}
+
+function loadSecurityConfig(filePath) {
+  const config = readJsonIfExists(filePath || 'security.config.json') || {};
+
+  return {
+    trustedDomains: new Set((config.trustedDomains || []).map(domain => String(domain).toLowerCase())),
+    blockedDomains: new Set((config.blockedDomains || []).map(domain => String(domain).toLowerCase()))
+  };
+}
+
 function extractEmail(value) {
   const match = String(value || '').match(/<([^>]+)>/);
   const email = match ? match[1] : String(value || '').trim();
@@ -16,7 +38,7 @@ function findUrls(text) {
   return String(text || '').match(/https?:\/\/[^\s<>'")]+/gi) || [];
 }
 
-function analyzeSourceRisk(mail) {
+function analyzeSourceRisk(mail, securityConfig) {
   const reasons = [];
   const fromDomain = extractDomain(mail.from);
   const replyToDomain = extractDomain(mail.replyTo);
@@ -24,6 +46,16 @@ function analyzeSourceRisk(mail) {
   const content = [mail.subject, mail.text, mail.html].filter(Boolean).join('\n');
   const urls = findUrls(content);
   const externalUrlDomains = [...new Set(urls.map(extractDomain).filter(Boolean))];
+  const trusted = securityConfig?.trustedDomains?.has(fromDomain) || false;
+  const blocked = securityConfig?.blockedDomains?.has(fromDomain) || false;
+
+  if (blocked) {
+    reasons.push(`发件域名在黑名单中: ${fromDomain}`);
+  }
+
+  if (trusted) {
+    reasons.push(`发件域名在白名单中: ${fromDomain}`);
+  }
 
   if (replyToDomain && fromDomain && replyToDomain !== fromDomain) {
     reasons.push(`Reply-To 域名与发件人域名不一致: ${replyToDomain}`);
@@ -42,8 +74,10 @@ function analyzeSourceRisk(mail) {
   }
 
   return {
-    level: reasons.length >= 2 ? 'medium' : reasons.length === 1 ? 'low' : 'low',
+    level: blocked ? 'high' : reasons.filter(reason => !reason.includes('白名单')).length >= 2 ? 'medium' : reasons.length === 1 ? 'low' : 'low',
     reasons,
+    trusted,
+    blocked,
     fromDomain,
     replyToDomain,
     returnPathDomain,
@@ -52,5 +86,6 @@ function analyzeSourceRisk(mail) {
 }
 
 module.exports = {
-  analyzeSourceRisk
+  analyzeSourceRisk,
+  loadSecurityConfig
 };

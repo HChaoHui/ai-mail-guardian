@@ -1,0 +1,8 @@
+{
+  "trustedDomains": [
+    "example.com"
+  ],
+  "blockedDomains": [
+    "phishing.example"
+  ]
+}

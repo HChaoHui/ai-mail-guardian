@@ -10,6 +10,7 @@
         "notify": true,
         "autoReply": false,
         "markSeen": true,
+        "moveTo": "AI-Risk",
         "notifyChannels": ["default-wecom"]
       }
     },
@@ -22,6 +23,33 @@
       "then": {
         "notify": true,
         "autoReply": false,
+        "markSeen": true,
+        "notifyChannels": ["default-wecom"]
+      }
+    },
+    {
+      "name": "黑名单域名只通知并移动",
+      "enabled": true,
+      "if": {
+        "sourceBlocked": true
+      },
+      "then": {
+        "notify": true,
+        "autoReply": false,
+        "markSeen": true,
+        "moveTo": "AI-Blocked",
+        "notifyChannels": ["default-wecom"]
+      }
+    },
+    {
+      "name": "白名单域名允许正常处理",
+      "enabled": true,
+      "if": {
+        "sourceTrusted": true
+      },
+      "then": {
+        "notify": true,
+        "autoReply": true,
         "markSeen": true,
         "notifyChannels": ["default-wecom"]
       }

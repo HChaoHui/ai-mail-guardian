@@ -2,6 +2,7 @@
 accounts.json
 notify.config.json
 rules.json
+security.config.json
 data/
 node_modules/
 .DS_Store

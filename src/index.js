@@ -8,13 +8,14 @@ const { loadSmtpOptions, sendReply } = require('./mailSender');
 const { buildNotificationContent, buildSystemNotificationContent } = require('./notifier');
 const { loadNotificationChannels, notifyChannels } = require('./notificationChannels');
 const { evaluateRules, loadRules } = require('./ruleEngine');
-const { analyzeSourceRisk } = require('./sourceRisk');
+const { analyzeSourceRisk, loadSecurityConfig } = require('./sourceRisk');
 const { loadHealthOptions, startHealthServer } = require('./healthServer');
 
 let aiOptions;
 let smtpOptions;
 let notificationChannels;
 let ruleConfig;
+let securityConfig;
 let database;
 let healthServer;
 const runtimeStatus = {
@@ -78,7 +79,7 @@ async function handleNewMail(mail) {
   });
 
   try {
-    mail.sourceRisk = analyzeSourceRisk(mail);
+    mail.sourceRisk = analyzeSourceRisk(mail, securityConfig);
     analysis = await analyzeMail(mail, aiOptions);
 
     if (analysis) {
@@ -146,23 +147,37 @@ async function handleNewMail(mail) {
             database.saveMailRecord(mail, {
               status: 'processed',
               aiStatus: analysis ? 'success' : 'failed',
-              replyStatus: replyResult?.skipped ? 'skipped' : replyResult ? 'sent' : 'none',
-              notifyStatus: 'success',
-              markSeenStatus: result.success ? 'success' : 'failed',
-              error: result.error || null
-            });
-          }).catch(error => {
+            replyStatus: replyResult?.skipped ? 'skipped' : replyResult ? 'sent' : 'none',
+            notifyStatus: 'success',
+            markSeenStatus: result.success ? 'success' : 'failed',
+            analysis,
+            replyResult,
+            decision,
+            sourceRisk: mail.sourceRisk,
+            error: result.error || null
+          });
+        }).catch(error => {
             database.saveMailRecord(mail, {
               status: 'processed',
               aiStatus: analysis ? 'success' : 'failed',
-              replyStatus: replyResult?.skipped ? 'skipped' : replyResult ? 'sent' : 'none',
-              notifyStatus: 'success',
-              markSeenStatus: 'failed',
-              error: error.message
-            });
+            replyStatus: replyResult?.skipped ? 'skipped' : replyResult ? 'sent' : 'none',
+            notifyStatus: 'success',
+            markSeenStatus: 'failed',
+            analysis,
+            replyResult,
+            decision,
+            sourceRisk: mail.sourceRisk,
+            error: error.message
           });
+        });
         } else {
           markSeenResult = { success: true, skipped: true };
+        }
+
+        if (decision.moveTo) {
+          mail.moveTo(decision.moveTo).catch(error => {
+            console.error('移动邮件失败:', error.message);
+          });
         }
       }
     } catch (error) {
@@ -185,6 +200,10 @@ async function handleNewMail(mail) {
         replyStatus: replyResult?.skipped ? 'skipped' : replyResult ? 'sent' : 'none',
         notifyStatus: notifySuccess ? 'success' : 'failed',
         markSeenStatus,
+        analysis,
+        replyResult,
+        decision,
+        sourceRisk: mail.sourceRisk,
         error: markSeenResult?.error || null
       });
     }
@@ -198,6 +217,7 @@ async function main() {
   smtpOptions = loadSmtpOptions(process.env);
   notificationChannels = loadNotificationChannels(process.env);
   ruleConfig = loadRules(process.env.RULES_CONFIG_PATH || 'rules.json');
+  securityConfig = loadSecurityConfig(process.env.SECURITY_CONFIG_PATH || 'security.config.json');
   const healthOptions = loadHealthOptions(process.env);
   runtimeStatus.accounts = accounts.map(account => ({
     name: account.name,
@@ -208,9 +228,11 @@ async function main() {
   healthServer = startHealthServer({
     ...healthOptions,
     getStatus: () => ({
+      uptime: process.uptime(),
       ...runtimeStatus,
       database: database.getStats()
-    })
+    }),
+    getMails: limit => database.listMails(limit)
   });
 
   const watchers = accounts.map(account => createMailWatcher({

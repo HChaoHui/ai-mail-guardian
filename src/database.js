@@ -10,6 +10,22 @@ function ensureDir(filePath) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
 }
 
+function stringify(value) {
+  if (value === undefined) {
+    return null;
+  }
+
+  return JSON.stringify(value);
+}
+
+function addColumnIfMissing(db, table, column, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+
+  if (!columns.some(item => item.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
 function createDatabase(dbPath) {
   const resolvedPath = path.resolve(dbPath || 'data/mail-service.db');
   ensureDir(resolvedPath);
@@ -39,6 +55,11 @@ function createDatabase(dbPath) {
     ON mail_records(account_name, message_id);
   `);
 
+  addColumnIfMissing(db, 'mail_records', 'analysis_json', 'TEXT');
+  addColumnIfMissing(db, 'mail_records', 'reply_json', 'TEXT');
+  addColumnIfMissing(db, 'mail_records', 'decision_json', 'TEXT');
+  addColumnIfMissing(db, 'mail_records', 'source_risk_json', 'TEXT');
+
   const statements = {
     findByUid: db.prepare('SELECT * FROM mail_records WHERE account_name = ? AND uid = ? LIMIT 1'),
     findByMessageId: db.prepare('SELECT * FROM mail_records WHERE account_name = ? AND message_id = ? LIMIT 1'),
@@ -46,8 +67,9 @@ function createDatabase(dbPath) {
       INSERT INTO mail_records (
         account_name, uid, message_id, subject, sender, status,
         ai_status, reply_status, notify_status, mark_seen_status,
-        error, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        error, analysis_json, reply_json, decision_json, source_risk_json,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(account_name, uid) DO UPDATE SET
         message_id = excluded.message_id,
         subject = excluded.subject,
@@ -58,11 +80,23 @@ function createDatabase(dbPath) {
         notify_status = excluded.notify_status,
         mark_seen_status = excluded.mark_seen_status,
         error = excluded.error,
+        analysis_json = COALESCE(excluded.analysis_json, mail_records.analysis_json),
+        reply_json = COALESCE(excluded.reply_json, mail_records.reply_json),
+        decision_json = COALESCE(excluded.decision_json, mail_records.decision_json),
+        source_risk_json = COALESCE(excluded.source_risk_json, mail_records.source_risk_json),
         updated_at = excluded.updated_at
     `),
     recent: db.prepare(`
       SELECT account_name, uid, subject, sender, status, ai_status, reply_status,
         notify_status, mark_seen_status, error, updated_at
+      FROM mail_records
+      ORDER BY updated_at DESC
+      LIMIT ?
+    `),
+    list: db.prepare(`
+      SELECT account_name, uid, subject, sender, status, ai_status, reply_status,
+        notify_status, mark_seen_status, error, analysis_json, reply_json,
+        decision_json, source_risk_json, created_at, updated_at
       FROM mail_records
       ORDER BY updated_at DESC
       LIMIT ?
@@ -107,6 +141,10 @@ function createDatabase(dbPath) {
         record.notifyStatus || null,
         record.markSeenStatus || null,
         record.error || null,
+        stringify(record.analysis),
+        stringify(record.replyResult),
+        stringify(record.decision),
+        stringify(record.sourceRisk),
         timestamp,
         timestamp
       );
@@ -123,6 +161,10 @@ function createDatabase(dbPath) {
         counts,
         recent: statements.recent.all(10)
       };
+    },
+
+    listMails(limit = 50) {
+      return statements.list.all(Math.min(Number(limit) || 50, 200));
     },
 
     close() {

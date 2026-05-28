@@ -28,7 +28,9 @@ function getValue(context, key) {
     accountName: context.mail?.accountName,
     from: context.mail?.from,
     fromDomain: context.mail?.sourceRisk?.fromDomain,
-    sourceRiskLevel: context.mail?.sourceRisk?.level
+    sourceRiskLevel: context.mail?.sourceRisk?.level,
+    sourceTrusted: context.mail?.sourceRisk?.trusted,
+    sourceBlocked: context.mail?.sourceRisk?.blocked
   };
 
   return map[key];

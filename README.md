@@ -18,7 +18,10 @@
 - SQLite 本地持久化去重，避免服务重启后重复处理
 - 通知成功后再标记邮件已读
 - 邮件来源基础风控，包括 Reply-To、Return-Path、短链接、验证码等风险提示
+- 白名单和黑名单域名配置
+- 按规则移动邮件到指定 IMAP 文件夹
 - 健康检查接口 `/health` 和 `/status`
+- 简单 Web 管理面板
 
 ## 环境要求
 
@@ -54,6 +57,7 @@ cp accounts.example.json accounts.json
 ```bash
 cp rules.example.json rules.json
 cp notify.config.example.json notify.config.json
+cp security.config.example.json security.config.json
 ```
 
 然后编辑：
@@ -63,6 +67,7 @@ cp notify.config.example.json notify.config.json
 accounts.json
 rules.json
 notify.config.json
+security.config.json
 ```
 
 ### .env
@@ -71,6 +76,7 @@ notify.config.json
 ACCOUNTS_CONFIG_PATH=accounts.json
 RULES_CONFIG_PATH=rules.json
 NOTIFY_CONFIG_PATH=notify.config.json
+SECURITY_CONFIG_PATH=security.config.json
 DB_PATH=data/mail-service.db
 
 AI_ANALYSIS_ENABLED=true
@@ -89,6 +95,7 @@ AUTO_REPLY_DRY_RUN=true
 HEALTH_ENABLED=true
 HEALTH_HOST=127.0.0.1
 HEALTH_PORT=23901
+HEALTH_ADMIN_PASSWORD=your_strong_admin_password
 ```
 
 ### accounts.json
@@ -195,6 +202,32 @@ HEALTH_PORT=23901
 
 当前支持的条件字段：`category`、`priority`、`securityRisk`、`needsHumanReview`、`needsReply`、`accountName`、`from`、`fromDomain`、`sourceRiskLevel`。
 
+还可以在规则动作里配置 `moveTo`，将邮件移动到指定 IMAP 文件夹：
+
+```json
+{
+  "then": {
+    "notify": true,
+    "autoReply": false,
+    "markSeen": true,
+    "moveTo": "AI-Risk"
+  }
+}
+```
+
+### security.config.json
+
+白名单和黑名单会参与来源风控，并可被规则引擎使用。
+
+```json
+{
+  "trustedDomains": ["example.com"],
+  "blockedDomains": ["phishing.example"]
+}
+```
+
+可用于规则条件：`sourceTrusted`、`sourceBlocked`。
+
 条件值可以是精确值、数组、包含匹配或正则。
 
 ## 启动
@@ -218,7 +251,27 @@ curl http://127.0.0.1:23901/health
 ```
 
 ```bash
-curl http://127.0.0.1:23901/status
+curl -H "x-admin-password: your_strong_admin_password" http://127.0.0.1:23901/status
+```
+
+Web 管理面板：
+
+```text
+http://127.0.0.1:23901/
+```
+
+管理面板会弹出密码输入框，只需要输入 `HEALTH_ADMIN_PASSWORD`，不需要用户名。如果未配置该密码，管理面板会显示“请先设置管理员密码”，避免误开公网后泄露邮件信息。`/health` 不需要密码，便于进程探活。
+
+`/status` 和 `/api/*` 需要认证。浏览器登录后会使用 HttpOnly Cookie；脚本调用可以传请求头：
+
+```bash
+curl -H "x-admin-password: your_strong_admin_password" http://127.0.0.1:23901/api/mails?limit=50
+```
+
+最近邮件数据接口：
+
+```text
+http://127.0.0.1:23901/api/mails?limit=50
 ```
 
 `/status` 会返回运行状态、监听账号、最近错误、SQLite 处理统计和最近处理记录，不会返回数据库绝对路径。
@@ -250,7 +303,7 @@ AUTO_REPLY_DRY_RUN=false
 - `securityRisk=high` 或 `needsHumanReview=true` 时自动拦截发送
 - 发送前使用规则扫描回复内容中的敏感模式
 - 企业微信通知会展示安全风险和来源风控结果
-- `.env`、`accounts.json`、`rules.json`、`notify.config.json`、SQLite 数据库默认被 `.gitignore` 忽略
+- `.env`、`accounts.json`、`rules.json`、`notify.config.json`、`security.config.json`、SQLite 数据库默认被 `.gitignore` 忽略
 
 ## 许可证
 

@@ -69,6 +69,26 @@ function createMailWatcher(options) {
     }
   }
 
+  async function moveMessage(uid, targetMailbox) {
+    if (!targetMailbox) {
+      return { success: true, skipped: true };
+    }
+
+    try {
+      await client.messageMove(uid, targetMailbox, { uid: true });
+      console.log(`邮件已移动: ${options.accountName} UID=${uid} -> ${targetMailbox}`);
+      return { success: true };
+    } catch (error) {
+      if (isNoConnectionError(error)) {
+        console.warn(`移动邮件时连接已断开: ${options.accountName} UID=${uid}`);
+        return { success: false, error: 'IMAP 连接已断开' };
+      }
+
+      console.error(`移动邮件失败: ${options.accountName} UID=${uid} -> ${targetMailbox}`, error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
   async function processUnseenMessages(onNewMail) {
     const messages = client.fetch(
       { seen: false },
@@ -106,7 +126,8 @@ function createMailWatcher(options) {
         html: parsed.html,
         date: parsed.date,
         attachments: parsed.attachments,
-        markSeen: () => markMessageSeen(message.uid)
+        markSeen: () => markMessageSeen(message.uid),
+        moveTo: targetMailbox => moveMessage(message.uid, targetMailbox)
       });
     }
   }
